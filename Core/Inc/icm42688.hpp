@@ -52,6 +52,7 @@ public:
     bool read(MotionData& out);
 
     bool isInitialised() const { return initialised_; }
+    uint8_t whoAmIRaw() { return readRegister(kWhoAmIReg); } // temporary diagnostic
 
 private:
     uint8_t readRegister(uint8_t reg);

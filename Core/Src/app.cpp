@@ -35,11 +35,24 @@ namespace {
 }
 
 void app_setup(void) {
+    // Step 1 - confirm UART works
+    char h[] = "app_setup reached\r\n";
+    HAL_UART_Transmit(&huart2, (uint8_t*)h, sizeof(h)-1, HAL_MAX_DELAY);
+
+    // Step 2 - read WHO_AM_I raw before begin()
+    uint8_t who = g_imu.whoAmIRaw();
+    char b[40];
+    int n = snprintf(b, sizeof(b), "WHO_AM_I = 0x%02X (expect 0x47)\r\n", who);
+    HAL_UART_Transmit(&huart2, (uint8_t*)b, n, HAL_MAX_DELAY);
+
+    // Step 3 - try begin(), but DON'T call Error_Handler on failure
+    // so the board keeps running and we can see output
     if (!g_imu.begin()) {
-        // WHO_AM_I mismatch: check MISO/MOSI/SCK/CS wiring and confirm
-        // SPI1 is configured for Mode 0 before assuming the sensor itself
-        // is faulty.
-        Error_Handler();
+        char e[] = "begin() FAILED - continuing anyway for diagnostics\r\n";
+        HAL_UART_Transmit(&huart2, (uint8_t*)e, sizeof(e)-1, HAL_MAX_DELAY);
+    } else {
+        char ok[] = "begin() OK\r\n";
+        HAL_UART_Transmit(&huart2, (uint8_t*)ok, sizeof(ok)-1, HAL_MAX_DELAY);
     }
 }
 
@@ -47,11 +60,19 @@ void app_loop(void) {
     icm42688::MotionData m;
     if (g_imu.read(m)) {
         char msg[128];
-        int len = std::snprintf(msg, sizeof(msg),
-            "accel[g]=(%.3f,%.3f,%.3f) gyro[dps]=(%.2f,%.2f,%.2f) T=%.1fC\r\n",
-            m.accelX, m.accelY, m.accelZ, m.gyroX, m.gyroY, m.gyroZ, m.temperatureC);
-        HAL_UART_Transmit(&huart2, reinterpret_cast<uint8_t*>(msg),
-                           static_cast<uint16_t>(len), HAL_MAX_DELAY);
+        int len = snprintf(msg, sizeof(msg),
+            "accel_mg=(%d,%d,%d) gyro_mdps=(%d,%d,%d) T_cdeg=%d\r\n",
+            (int)(m.accelX * 1000),
+            (int)(m.accelY * 1000),
+            (int)(m.accelZ * 1000),
+            (int)(m.gyroX  * 1000),
+            (int)(m.gyroY  * 1000),
+            (int)(m.gyroZ  * 1000),
+            (int)(m.temperatureC * 100));
+        HAL_UART_Transmit(&huart2,
+            reinterpret_cast<uint8_t*>(msg),
+            static_cast<uint16_t>(len),
+            HAL_MAX_DELAY);
     }
     HAL_Delay(100);
 }
