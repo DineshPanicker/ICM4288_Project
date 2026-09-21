@@ -117,7 +117,19 @@ private:
             (static_cast<uint16_t>(std::to_integer<uint8_t>(hi)) << 8) |
              static_cast<uint16_t>(std::to_integer<uint8_t>(lo)));
     }
+    static constexpr float accelSensitivity(AccelFsr fsr) noexcept{
+    	switch(fsr){
+    	case AccelFsr::G16: return 2048.0f;
+    	}
+    	return 0.0f;
+    }
 
+    static constexpr float gyroSensitivity(GyroFsr fsr) noexcept{
+    	switch(fsr){
+    	case GyroFsr::Dps2000: return 16.4f;
+    	}
+    	return 0.0f;
+    }
     // ── State ────────────────────────────────────────────────────────
     Bus    bus_;
     Config cfg_;
@@ -125,8 +137,7 @@ private:
 
     // Sensitivities at the configured full-scale ranges (datasheet tables).
     // constexpr: evaluated at compile time, zero runtime storage.
-    static constexpr float kAccelSens = 2048.0f;  // LSB/g  @ +-16 g
-    static constexpr float kGyroSens  = 16.4f;    // LSB/dps @ +-2000 dps
+
     static constexpr float kTempSens  = 132.48f;
     static constexpr float kTempOff   = 25.0f;
 
@@ -183,12 +194,12 @@ std::optional<MotionData> Icm42688<Bus>::read() noexcept {
     readRegs(Register::AccelDataX1, raw);
 
     MotionData m;
-    m.accelX = static_cast<float>(toInt16(raw[0], raw[1])) / kAccelSens;
-    m.accelY = static_cast<float>(toInt16(raw[2], raw[3])) / kAccelSens;
-    m.accelZ = static_cast<float>(toInt16(raw[4], raw[5])) / kAccelSens;
-    m.gyroX  = static_cast<float>(toInt16(raw[6], raw[7]))  / kGyroSens;
-    m.gyroY  = static_cast<float>(toInt16(raw[8], raw[9]))  / kGyroSens;
-    m.gyroZ  = static_cast<float>(toInt16(raw[10],raw[11])) / kGyroSens;
+    m.accelX = static_cast<float>(toInt16(raw[0], raw[1])) / accelSensitivity(cfg_.accelFsr);
+    m.accelY = static_cast<float>(toInt16(raw[2], raw[3])) / accelSensitivity(cfg_.accelFsr);
+    m.accelZ = static_cast<float>(toInt16(raw[4], raw[5])) / accelSensitivity(cfg_.accelFsr);
+    m.gyroX  = static_cast<float>(toInt16(raw[6], raw[7]))  / gyroSensitivity(cfg_.gyroFsr);
+    m.gyroY  = static_cast<float>(toInt16(raw[8], raw[9]))  / gyroSensitivity(cfg_.gyroFsr);
+    m.gyroZ  = static_cast<float>(toInt16(raw[10],raw[11])) / gyroSensitivity(cfg_.gyroFsr);
 
     std::array<std::byte, 2> tmp{};
     readRegs(Register::TempDataH, tmp);
