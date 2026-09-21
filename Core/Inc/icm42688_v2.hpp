@@ -102,10 +102,6 @@ public:
 
     [[nodiscard]] bool isReady() const noexcept { return ready_; }
 
-    // Temporary diagnostic helper — remove once bring-up is confirmed.
-    [[nodiscard]] uint8_t whoAmIRaw() noexcept {
-        return readReg(Register::WhoAmI);
-    }
 
 private:
     // ── SPI helpers ──────────────────────────────────────────────────
