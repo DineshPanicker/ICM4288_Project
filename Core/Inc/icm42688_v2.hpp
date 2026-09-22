@@ -235,11 +235,7 @@ void Icm42688<Bus>::readRegs(Register startReg, std::span<std::byte> out) noexce
     std::array<std::byte, 1> tx{std::byte(static_cast<uint8_t>(startReg) | kReadBit)};
     bus_.assertCs();
     bus_.transfer(tx, {});
-    for (auto& b : out) {
-        std::array<std::byte, 1> rx{};
-        bus_.transfer({}, rx);
-        b = rx[0];
-    }
+    bus_.transfer({},out);
     bus_.releaseCs();
 }
 
