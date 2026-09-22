@@ -54,9 +54,11 @@ struct MockBus {
             return;
         }
         if (!rx.empty() && isRead) {
-            // read path: return register value, auto-increment
-            rx[0] = std::byte{regs[currentReg]};
-            ++currentReg;
+            // read path: fill the whole span, auto-incrementing like the chip
+            for (auto& b : rx) {
+                b = std::byte{regs[currentReg]};
+                ++currentReg;
+            }
         }
     }
 };
