@@ -20,7 +20,7 @@ concept SpiBus = requires(T& bus,
                           std::span<std::byte>       rx) {
     { bus.assertCs()       } -> std::same_as<void>;
     { bus.releaseCs()      } -> std::same_as<void>;
-    { bus.transfer(tx, rx) } -> std::same_as<void>;
+    { bus.transfer(tx, rx) } -> std::same_as<bool>;
 };
 
 // ── 2. Register map ──────────────────────────────────────────────────────
@@ -105,11 +105,12 @@ public:
 
 private:
     // ── SPI helpers ──────────────────────────────────────────────────
-    uint8_t readReg(Register reg) noexcept;
-    void    writeReg(Register reg, uint8_t value) noexcept;
+    [[nodiscard]] bool readReg(Register reg, uint8_t& out) noexcept;
+    [[nodiscard]] bool writeReg(Register reg, uint8_t value) noexcept;
+
 
     // Burst read: fills 'out' starting at 'startReg', auto-incrementing.
-    void readRegs(Register startReg, std::span<std::byte> out) noexcept;
+    [[nodiscard]] bool readRegs(Register startReg, std::span<std::byte> out) noexcept;
 
     // ── Conversion helpers ───────────────────────────────────────────
     static constexpr int16_t toInt16(std::byte hi, std::byte lo) noexcept {
@@ -159,14 +160,20 @@ bool Icm42688<Bus>::begin() noexcept {
     // The first SPI transaction after reset is consumed — isolated
     // experimentally (see bring-up notes); mechanism not confirmed in
     // DS-000347. Discard one read before the real WHO_AM_I check.
-    (void)readReg(Register::WhoAmI);
+    uint8_t discard = 0;
+    (void)readReg(Register::WhoAmI, discard);
 
-    if (readReg(Register::WhoAmI) != kWhoAmIExpected) {
+    uint8_t id = 0;
+    if (!readReg(Register::WhoAmI, id) || id != kWhoAmIExpected) {
         ready_ = false;
         return false;
     }
 
-    writeReg(Register::PwrMgmt0, kPwrLowNoise);
+   if(!writeReg(Register::PwrMgmt0, kPwrLowNoise))
+   {
+	   ready_ = false;
+	   return false;
+   }
 
     // datasheet: 1 ms settling after power-mode change.
     // Platform-provided delay; on STM32 this is HAL_Delay(1).
@@ -179,8 +186,11 @@ bool Icm42688<Bus>::begin() noexcept {
     uint8_t accCfg  = (static_cast<uint8_t>(cfg_.accelFsr) << 5) |
                        static_cast<uint8_t>(cfg_.accelOdr);
 
-    writeReg(Register::GyroConfig0,  gyroCfg);
-    writeReg(Register::AccelConfig0, accCfg);
+    if(!writeReg(Register::GyroConfig0,  gyroCfg) ||  !writeReg(Register::AccelConfig0, accCfg))
+    {
+    	ready_=false;
+    	return false;
+    }
 
     ready_ = true;
     return true;
@@ -191,7 +201,13 @@ std::optional<MotionData> Icm42688<Bus>::read() noexcept {
     if (!ready_) return std::nullopt;
 
     std::array<std::byte, 12> raw{};
-    readRegs(Register::AccelDataX1, raw);
+    if(!readRegs(Register::AccelDataX1,raw)){
+    	return std::nullopt;
+    }
+    std::array<std::byte, 2> tmp{};
+    if (!readRegs(Register::TempDataH, tmp)) {
+        return std::nullopt;
+    }
 
     MotionData m;
     m.accelX = static_cast<float>(toInt16(raw[0], raw[1])) / accelSensitivity(cfg_.accelFsr);
@@ -201,8 +217,6 @@ std::optional<MotionData> Icm42688<Bus>::read() noexcept {
     m.gyroY  = static_cast<float>(toInt16(raw[8], raw[9]))  / gyroSensitivity(cfg_.gyroFsr);
     m.gyroZ  = static_cast<float>(toInt16(raw[10],raw[11])) / gyroSensitivity(cfg_.gyroFsr);
 
-    std::array<std::byte, 2> tmp{};
-    readRegs(Register::TempDataH, tmp);
     m.temperatureC = (static_cast<float>(toInt16(tmp[0], tmp[1])) / kTempSens)
                    + kTempOff;
 
@@ -210,33 +224,34 @@ std::optional<MotionData> Icm42688<Bus>::read() noexcept {
 }
 
 template<SpiBus Bus>
-uint8_t Icm42688<Bus>::readReg(Register reg) noexcept {
+bool Icm42688<Bus>::readReg(Register reg, uint8_t& out) noexcept {
     std::array<std::byte, 1> tx{std::byte(static_cast<uint8_t>(reg) | kReadBit)};
     std::array<std::byte, 1> rx{};
     bus_.assertCs();
-    bus_.transfer(tx, {});   // send address
-    bus_.transfer({}, rx);   // clock a byte back
+    bool ok = bus_.transfer(tx,{}) && bus_.transfer({},rx);
     bus_.releaseCs();
-    return std::to_integer<uint8_t>(rx[0]);
+    if (ok) {
+        out = std::to_integer<uint8_t>(rx[0]);
+    }
+    return ok;
 }
 
 template<SpiBus Bus>
-void Icm42688<Bus>::writeReg(Register reg, uint8_t value) noexcept {
+bool Icm42688<Bus>::writeReg(Register reg, uint8_t value) noexcept {
     std::array<std::byte, 1> addrByte{std::byte(static_cast<uint8_t>(reg) & ~kReadBit)};
     std::array<std::byte, 1> valByte {std::byte(value)};
     bus_.assertCs();
-    bus_.transfer(addrByte, {});
-    bus_.transfer(valByte,  {});
+    bool ok = bus_.transfer(addrByte, {}) && bus_.transfer(valByte, {});
     bus_.releaseCs();
+    return ok;
 }
-
 template<SpiBus Bus>
-void Icm42688<Bus>::readRegs(Register startReg, std::span<std::byte> out) noexcept {
+bool Icm42688<Bus>::readRegs(Register startReg, std::span<std::byte> out) noexcept {
     std::array<std::byte, 1> tx{std::byte(static_cast<uint8_t>(startReg) | kReadBit)};
     bus_.assertCs();
-    bus_.transfer(tx, {});
-    bus_.transfer({},out);
+    bool ok = bus_.transfer(tx, {}) && bus_.transfer({}, out);
     bus_.releaseCs();
+    return ok;
 }
 
 } // namespace icm42688

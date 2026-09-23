@@ -28,22 +28,31 @@ struct HalBus {
     // transfer: if tx is non-empty, transmit those bytes;
     //           if rx is non-empty, clock bytes in.
     // Both tx-only, rx-only, and simultaneous are valid calls.
-    void transfer(std::span<const std::byte> tx,
+
+    static constexpr uint32_t kTimeoutMs = 100; //Adding a max timeout of 100ms for tiny transfers
+
+    bool transfer(std::span<const std::byte> tx,
                   std::span<std::byte>       rx) noexcept {
         if (!tx.empty()) {
             // NOLINTNEXTLINE: HAL needs non-const uint8_t*; cast is safe.
-            HAL_SPI_Transmit(hspi,
+            if(HAL_SPI_Transmit(hspi,
                 const_cast<uint8_t*>(
                     reinterpret_cast<const uint8_t*>(tx.data())),
                 static_cast<uint16_t>(tx.size()),
-                HAL_MAX_DELAY);
+                kTimeoutMs) != HAL_OK)
+            	{
+            		return false;
+            	}
         }
         if (!rx.empty()) {
-            uint8_t dummy = 0;
-            HAL_SPI_Receive(hspi, reinterpret_cast<uint8_t*>(rx.data()),
+            if(HAL_SPI_Receive(hspi,
+            		reinterpret_cast<uint8_t*>(rx.data()),
             		static_cast<uint16_t>(rx.size()),
-					HAL_MAX_DELAY);
+					kTimeoutMs)!= HAL_OK){
+            	return false;
+            }
         }
+        return true;
     }
 };
 

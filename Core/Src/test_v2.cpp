@@ -38,20 +38,20 @@ struct MockBus {
     void assertCs()  noexcept { addressPhase = true; }
     void releaseCs() noexcept {}
 
-    void transfer(std::span<const std::byte> tx,
+    bool transfer(std::span<const std::byte> tx,
                   std::span<std::byte>       rx) noexcept {
         if (!tx.empty() && addressPhase) {
             uint8_t addr = std::to_integer<uint8_t>(tx[0]);
             isRead      = (addr & 0x80u) != 0;
             currentReg  = addr & 0x7Fu;
             addressPhase = false;
-            return;
+            return true;
         }
         if (!tx.empty() && !isRead) {
             // write path
             regs[currentReg] = std::to_integer<uint8_t>(tx[0]);
             ++currentReg;
-            return;
+            return true;
         }
         if (!rx.empty() && isRead) {
             // read path: fill the whole span, auto-incrementing like the chip
@@ -60,6 +60,7 @@ struct MockBus {
                 ++currentReg;
             }
         }
+        return true;
     }
 };
 
