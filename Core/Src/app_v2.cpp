@@ -48,10 +48,10 @@ void app_loop(void) {
             static_cast<int>(m->gyroY  * 1000.0f),
             static_cast<int>(m->gyroZ  * 1000.0f),
             static_cast<int>(m->temperatureC * 100.0f));
-        HAL_UART_Transmit(&huart2,
-            reinterpret_cast<uint8_t*>(msg),
-            static_cast<uint16_t>(len),
-            HAL_MAX_DELAY);
+        if (len > 0 && static_cast<std::size_t>(len) < sizeof(msg)) {
+            HAL_UART_Transmit(&huart2, reinterpret_cast<uint8_t*>(msg),
+                              static_cast<uint16_t>(len), HAL_MAX_DELAY);
+        }
     }
     HAL_Delay(100);
 }
