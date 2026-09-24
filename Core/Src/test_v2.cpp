@@ -64,6 +64,13 @@ struct MockBus {
     }
 };
 
+// A type deliberately missing releaseCs and transfer — must NOT satisfy SpiBus.
+struct NotABus {
+    void assertCs() noexcept {}
+};
+static_assert(!icm42688::SpiBus<NotABus>,
+              "NotABus must NOT satisfy SpiBus");
+
 // Verify MockBus satisfies the concept — compile-time guarantee.
 static_assert(icm42688::SpiBus<MockBus>, "MockBus must satisfy SpiBus");
 
